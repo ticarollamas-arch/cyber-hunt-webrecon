@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Cyber Hunt Web Recon — Foco em Alta Severidade (P1 / P2).
+Cyber Hunt Web Recon — Foco Extremo em P1 / P2 (Arquivos e Endpoints Críticos).
 
-Esta versão filtra ruídos e descarte automático de achados de baixa severidade
-(como cabeçalhos ausentes e robots.txt comum), focando estritamente em potenciais
-vulnerabilidades de impacto alto ou médio (P1/P2) e checagens profundas de caminhos críticos.
+Filtra ruídos, cabeçalhos ausentes e cookies, focando estritamente em potenciais
+vulnerabilidades de impacto alto ou médio (como .env, .git, backups e endpoints expostos).
 
 Uso:
     python3 webrecon.py https://exemplo.com
@@ -70,44 +69,27 @@ def scan(alvo):
     host = parsed.hostname
 
     print("\n" + "=" * 60)
-    print("CYBER HUNT WEB RECON — Modo Foco P1 / P2 (Alta/Média)")
+    print("CYBER HUNT WEB RECON — Foco Exclusivo P1 / P2 (Críticos)")
     print("=" * 60)
 
-    # 1. TLS Obsoleto (Apenas se for vulnerabilidade real de infra)
+    # 1. TLS Obsoleto
     print("\n[1] Verificando versão de TLS...")
     tls = checar_tls(host)
     print(f"    {tls}")
     if isinstance(tls, str) and ("TLSv1.0" in tls or "TLSv1.1" in tls):
         achados.append(("TLS obsoleto detectado", f"Servidor negocia {tls}", "media"))
 
-    # 2. Verificação de Cookies (Apenas sinalizações críticas como falta de Secure em contexto sensível)
-    print("\n[2] Analisando Flags de Cookies...")
-    status, headers, _ = fetch(alvo)
-    time.sleep(PAUSA)
-    if status is None:
-        print(f"    Não foi possível conectar: {headers.get('_erro')}")
-        return achados
-    low = {k.lower(): v for k, v in headers.items()}
-    
-    setc = low.get("set-cookie", "")
-    if setc:
-        if "secure" not in setc.lower():
-            achados.append(("Cookie sem flag Secure", "Cookie sensível trafegando sem proteção em canal inseguro.", "media"))
-    else:
-        print("    Nenhum cookie na resposta inicial ou ignorado.")
-
-    # 3. Varredura Profunda de Caminhos Críticos (Descartando barulho como robots.txt)
-    print("\n[3] Executando busca profunda de arquivos e endpoints sensíveis (P1/P2)...")
+    # 2. Varredura Profunda de Caminhos Críticos (Foco Principal)
+    print("\n[2] Executando busca profunda de arquivos e endpoints sensíveis (P1/P2)...")
     for c in CAMINHOS_CRITICOS:
         url = alvo.rstrip("/") + c
         st, _, corpo = fetch(url)
         time.sleep(PAUSA)
         
-        # Filtro estrito: Ignorar 404, 403 genéricos ou redirecionamentos para login/home (soft 404)
+        # Filtro estrito: Ignorar 404, 403 genéricos ou redirecionamentos para páginas de erro padrão (soft 404)
         if st == 200 and corpo:
-            # Validação simples para evitar falso positivo de páginas de erro em HTML customizadas
             conteudo_str = corpo.decode("utf-8", errors="ignore").lower()
-            if "<html" in conteudo_str and "not found" in conteudo_str:
+            if "<html" in conteudo_str and ("not found" in conteudo_str or "404" in conteudo_str):
                 continue
                 
             print(f"    [!] POTENCIAL EXPOSIÇÃO CRÍTICA: {c} (HTTP 200)")
@@ -120,17 +102,17 @@ def scan(alvo):
 def relatar(achados, alvo, saida=None):
     print("\n" + "=" * 60)
     if not achados:
-        print("RESUMO — Nenhum achado de severidade Média ou Alta (P1/P2) detectado.")
-        print("O alvo parece estar bem endurecido contra varreduras passivas básicas.")
+        print("RESUMO — Nenhum achado crítico de severidade Média ou Alta (P1/P2) detectado.")
+        print("O alvo está blindado contra os caminhos testados nesta varredura.")
     else:
-        print(f"RESUMO — {len(achados)} potencial(is) achado(s) de impacto (P1/P2)")
+        print(f"RESUMO — {len(achados)} potencial(is) achado(s) crítico(s) (P1/P2)")
         ordem = {"alta": 0, "media": 1}
         for titulo, desc, sev in sorted(achados, key=lambda x: ordem[x[2]]):
             print(f"\n[{sev.upper()}] {titulo}")
             print(f"    {desc}")
             
     print("\n" + "-" * 60)
-    print("Filtro aplicado: Descartados cabeçalhos ausentes e arquivos irrelevantes.")
+    print("Filtro aplicado: Verificação de cookies e cabeçalhos ausentes removidos.")
 
     if saida:
         with open(saida, "w", encoding="utf-8") as f:
